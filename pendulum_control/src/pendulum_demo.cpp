@@ -36,6 +36,8 @@
 #include "pendulum_control/pendulum_motor.hpp"
 #include "pendulum_control/rtt_executor.hpp"
 
+#include <kpsr_ros2_executor/streaming_executor_factory.hpp>
+#include <kpsr_ros2_executor/streaming_executor.hpp>
 
 static bool running = false;
 
@@ -96,6 +98,7 @@ using TLSFAllocator = tlsf_heap_allocator<T>;
 
 int main(int argc, char * argv[])
 {
+  char threadedExecutorOption = *argv[1];
   // Initialization phase.
   // In the initialization phase of a realtime program, non-realtime-safe operations such as
   // allocation memory are permitted.
@@ -127,10 +130,11 @@ int main(int argc, char * argv[])
   // message pool is determined by the number of threads (the maximum number of concurrent accesses
   // to the subscription).
   // Since this example is single-threaded, we choose a message pool size of 1 for each strategy.
+
   auto state_msg_strategy =
-    std::make_shared<MessagePoolMemoryStrategy<pendulum_msgs::msg::JointState, 1>>();
+    std::make_shared<MessagePoolMemoryStrategy<pendulum_msgs::msg::JointState, 16>>();
   auto command_msg_strategy =
-    std::make_shared<MessagePoolMemoryStrategy<pendulum_msgs::msg::JointCommand, 1>>();
+    std::make_shared<MessagePoolMemoryStrategy<pendulum_msgs::msg::JointCommand, 16>>();
   auto setpoint_msg_strategy =
     std::make_shared<MessagePoolMemoryStrategy<pendulum_msgs::msg::JointCommand, 1>>();
 
@@ -219,7 +223,36 @@ int main(int argc, char * argv[])
   options.memory_strategy = memory_strategy;
   // RttExecutor is a special single-threaded executor instrumented to calculate and record
   // real-time performance statistics.
-  auto executor = std::make_shared<pendulum_control::RttExecutor>(options);
+
+  rclcpp::Executor::SharedPtr threadedExecutor;
+
+  switch(threadedExecutorOption) {
+    case '0':
+      std::cout << "Option 0: Parent executor" << std::endl;
+      threadedExecutor = nullptr;
+      break;
+    case '1':
+      std::cout << "Option 1: SingleThreadedExecutor" << std::endl;
+      threadedExecutor = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+      break;
+    case '2':
+      std::cout << "Option 2: MultiThreadedExecutor" << std::endl;
+      threadedExecutor = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
+      break;
+    case '3':
+      std::cout << "Option 3: StaticSingleThreadedExecutor" << std::endl;
+      threadedExecutor = std::make_shared<rclcpp::executors::StaticSingleThreadedExecutor>();
+      break;
+    case '4':
+      std::cout << "Option 4: KlepsydraExecutor" << std::endl;
+      threadedExecutor = kpsr::ros2::StreamingExecutorFactory::createExecutor(false, options);
+      break;
+    default:
+      std::cout << "No option provided for the ThreadedExecutorType. Default value: SingleThreadedExecutor" << std::endl;
+      threadedExecutor = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+  }
+    
+  auto executor = std::make_shared<pendulum_control::RttExecutor>(options, threadedExecutor);
 
   // Add the motor and controller nodes to the executor.
   executor->add_node(motor_node);
@@ -306,6 +339,9 @@ int main(int argc, char * argv[])
   printf("PendulumMotor received %zu messages\n", pendulum_motor->messages_received);
   printf("PendulumController received %zu messages\n", pendulum_controller->messages_received);
 
+  if (threadedExecutorOption == '4') {
+    kpsr::ros2::StreamingExecutorFactory::deleteAllExecutors();
+  }
   rclcpp::shutdown();
 
   return 0;
