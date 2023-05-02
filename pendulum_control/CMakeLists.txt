@@ -22,6 +22,12 @@ find_package(rclcpp REQUIRED)
 find_package(pendulum_msgs REQUIRED)
 find_package(rttest)
 find_package(tlsf_cpp)
+find_package(kpsr_ros2_executor REQUIRED)
+find_package(Klepsydra REQUIRED)
+find_package(KlepsydraAdmin REQUIRED)
+find_package(KlepsydraStreaming REQUIRED)
+
+set(CMAKE_THREAD_LIBS_INIT "-lpthread")
 
 include_directories(include)
 
@@ -32,11 +38,13 @@ endif()
 
 add_executable(pendulum_demo
   src/pendulum_demo.cpp)
+
 ament_target_dependencies(pendulum_demo
   "pendulum_msgs"
   "rclcpp"
   "rttest"
-  "tlsf_cpp")
+  "tlsf_cpp"
+  "kpsr_ros2_executor")
 
 add_executable(pendulum_logger
   src/pendulum_logger.cpp)
